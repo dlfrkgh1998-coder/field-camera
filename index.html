@@ -7,7 +7,7 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
         body { background: #f0f2f5; padding: 15px; color: #333; }
-        h2, h3 { margin-bottom: 10px; color: #1a1a1a; }
+        h3 { margin-bottom: 10px; color: #1a1a1a; }
         .card { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         label { display: block; margin-top: 10px; font-weight: bold; font-size: 14px; }
         input[type="text"], input[type="file"] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; background-color: #fff; }
@@ -19,13 +19,12 @@
         .hint { font-size: 12px; color: #666; margin-top: 4px; display: block; }
         .history-box { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
         .history-tag { background: #e4e6eb; padding: 6px 10px; border-radius: 15px; font-size: 13px; cursor: pointer; color: #4b4f56; }
-        .history-tag:active { background: #d8dadf; }
         .header-area { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #errorLog { color: red; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin-top: 10px; background: #fee; padding: 10px; border-radius: 6px; display: none; }
     </style>
 </head>
 <body>
 
-    <!-- 메인 작업 화면 -->
     <div id="mainPage">
         <div class="card">
             <h3>1. 사진 불러오기</h3>
@@ -35,29 +34,25 @@
         <div class="card">
             <div class="header-area">
                 <h3>2. 현장 정보 입력</h3>
-                <button class="btn-red" onclick="clearHistory()">입력 기록 초기화</button>
+                <button class="btn-red" onclick="clearHistory()">기록 초기화</button>
             </div>
             
-            <!-- 현장명 -->
             <label>현장 이름</label>
             <input type="text" id="inputSite" placeholder="예: 서울아파트 현장" list="siteList">
             <datalist id="siteList"></datalist>
             <span class="hint">자주 쓰는 항목:</span>
             <div class="history-box" id="historySite"></div>
 
-            <!-- 동 -->
             <label>동 입력</label>
             <input type="text" id="inputDong" placeholder="예: 101동" list="dongList">
             <datalist id="dongList"></datalist>
             <div class="history-box" id="historyDong"></div>
 
-            <!-- 호수 -->
             <label>호수 입력</label>
             <input type="text" id="inputHo" placeholder="예: 502호" list="hoList">
             <datalist id="hoList"></datalist>
             <div class="history-box" id="historyHo"></div>
 
-            <!-- 작업 내용 -->
             <label>작업 내용 (공종)</label>
             <input type="text" id="inputContent" placeholder="예: 방수공사" list="contentList">
             <datalist id="contentList"></datalist>
@@ -71,45 +66,46 @@
             <img id="preview">
             <button class="btn-green" onclick="downloadImage()">💾 갤러리에 저장</button>
         </div>
+
+        <div class="card" id="errorCard" style="margin-top:15px;">
+            <h3>⚠️ 상태 체크 (반응 없을 때 확인)</h3>
+            <div id="errorLog">에러 없음</div>
+        </div>
     </div>
 
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
         let originalImage = null;
-        
-        // 입력 기록을 기억할 배열 변수들
-        let historyData = {
-            site: [],
-            dong: [],
-            ho: [],
-            content: []
-        };
+        let historyData = { site: [], dong: [], ho: [], content: [] };
 
-        // 앱 시작 시 로컬스토리지에서 기존 입력 기록 불러오기
+        function logError(msg) {
+            const logBox = document.getElementById('errorLog');
+            logBox.style.display = 'block';
+            logBox.innerText += "\n" + msg;
+        }
+
         function initData() {
-            const savedHistory = localStorage.getItem('constructionInputHistory');
-            if (savedHistory) {
-                historyData = JSON.parse(savedHistory);
-            } else {
-                // 초기에 보여줄 샘플 예시 기록
-                historyData = {
-                    site: ["서울아파트 현장", "부산 빌딩 현장"],
-                    dong: ["101동", "102동", "A동"],
-                    ho: ["101호", "502호", "지하1층"],
-                    content: ["방수공사", "타일시공", "철근배근"]
-                };
-                saveHistoryToStorage();
+            try {
+                const savedHistory = localStorage.getItem('constructionInputHistory');
+                if (savedHistory) {
+                    historyData = JSON.parse(savedHistory);
+                } else {
+                    historyData = {
+                        site: ["서울아파트 현장", "부산 빌딩 현장"],
+                        dong: ["101동", "102동"],
+                        ho: ["101호", "502호"],
+                        content: ["방수공사", "타일시공"]
+                    };
+                    localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
+                }
+                renderHistoryTags();
+                logError("앱 초기화 완료. 사진을 올린 후 합성을 눌러보세요.");
+            } catch(e) {
+                logError("초기화 에러: " + e.message);
             }
-            renderHistoryTags();
         }
 
-        // 입력 기록 보존
-        function saveHistoryToStorage() {
-            localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
-        }
-
-        // 화면에 자주 쓰는 단어 버튼(태그)들과 자동완성 리스트 뿌려주기
         function renderHistoryTags() {
             setupSection('Site', historyData.site);
             setupSection('Dong', historyData.dong);
@@ -118,132 +114,113 @@
         }
 
         function setupSection(type, list) {
-            // 1. 글자 입력 시 밑에 뜨는 자동완성(Datalist) 세팅
             const datalist = document.getElementById(type.toLowerCase() + 'List');
-            datalist.innerHTML = '';
-            list.forEach(item => {
-                const option = document.createElement('option');
-                option.value = item;
-                datalist.appendChild(option);
-            });
+            if(datalist) {
+                datalist.innerHTML = '';
+                list.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item;
+                    datalist.appendChild(option);
+                });
+            }
 
-            // 2. 터치해서 바로 입력하는 동글동글한 태그 버튼 세팅
             const box = document.getElementById('history' + type);
-            box.innerHTML = '';
-            list.forEach(item => {
-                const tag = document.createElement('span');
-                tag.className = 'history-tag';
-                tag.innerText = item;
-                tag.onclick = function() {
-                    document.getElementById('input' + type).value = item;
-                };
-                box.appendChild(tag);
-            });
+            if(box) {
+                box.innerHTML = '';
+                list.forEach(item => {
+                    const tag = document.createElement('span');
+                    tag.className = 'history-tag';
+                    tag.innerText = item;
+                    tag.onclick = function() {
+                        document.getElementById('input' + type).value = item;
+                    };
+                    box.appendChild(tag);
+                });
+            }
         }
 
-        // 새로운 입력 데이터를 기록에 추가하는 함수 (중복 제거)
         function addNewHistory(type, value) {
             if (!value) return;
             let list = historyData[type];
-            // 이미 존재하면 지우고 맨 앞으로 보내서 최신순 정렬
             const index = list.indexOf(value);
-            if (index > -1) {
-                list.splice(index, 1);
-            }
-            list.unshift(value); // 맨 앞에 추가
-            
-            // 너무 많이 쌓이지 않게 최대 8개까지만 유지
-            if (list.length > 8) {
-                list.pop();
-            }
-            saveHistoryToStorage();
+            if (index > -1) list.splice(index, 1);
+            list.unshift(value);
+            if (list.length > 8) list.pop();
+            localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
         }
 
-        // 기록 초기화 기능
         function clearHistory() {
             if (confirm("자주 쓰는 항목 기록을 모두 지우시겠습니까?")) {
                 historyData = { site: [], dong: [], ho: [], content: [] };
-                saveHistoryToStorage();
+                localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
                 renderHistoryTags();
             }
         }
 
-        // 사진 파일 읽기
         function loadImage(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                originalImage = new Image();
-                originalImage.onload = function() {
-                    document.getElementById('resultCard').style.display = 'none';
+            try {
+                const file = event.target.files;
+                if (!file) return;
+                
+                logError("사진 로딩 시작: " + file.name + " (" + Math.round(file.size/1024/1024) + "MB)");
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    originalImage = new Image();
+                    originalImage.onload = function() {
+                        logError("사진 로딩 완료! 원본 크기: " + originalImage.width + "x" + originalImage.height);
+                        document.getElementById('resultCard').style.display = 'none';
+                    };
+                    originalImage.onerror = function() {
+                        logError("이미지 해석 에러");
+                    };
+                    originalImage.src = e.target.result;
                 };
-                originalImage.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
+                reader.readAsDataURL(file);
+            } catch(e) {
+                logError("사진 로드 실패: " + e.message);
+            }
         }
 
-        // 워터마크 합성 처리
         function processImage() {
-            if (!originalImage) { alert('먼저 사진을 촬영하거나 불러와주세요!'); return; }
+            try {
+                if (!originalImage) { 
+                    alert('먼저 사진을 촬영하거나 불러와주세요!'); 
+                    logError("경고: 사진이 선택되지 않았습니다.");
+                    return; 
+                }
 
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
+                logError("합성 시작...");
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
 
-            canvas.width = originalImage.width;
-            canvas.height = originalImage.height;
-            ctx.drawImage(originalImage, 0, 0);
+                let targetWidth = originalImage.width;
+                let targetHeight = originalImage.height;
+                const MAX_SIZE = 2000;
+                
+                if (targetWidth > MAX_SIZE || targetHeight > MAX_SIZE) {
+                    if (targetWidth > targetHeight) {
+                        targetHeight = Math.round((targetHeight * MAX_SIZE) / targetWidth);
+                        targetWidth = MAX_SIZE;
+                    } else {
+                        targetWidth = Math.round((targetWidth * MAX_SIZE) / targetHeight);
+                        targetHeight = MAX_SIZE;
+                    }
+                    logError(`사진 해상도 최적화 적용: ${targetWidth}x${targetHeight}`);
+                }
 
-            // 사용자가 직접 입력창에 타이핑한 텍스트 가져오기
-            const site = document.getElementById('inputSite').value.trim() || "미지정";
-            const dong = document.getElementById('inputDong').value.trim() || "";
-            const ho = document.getElementById('inputHo').value.trim() || "";
-            const content = document.getElementById('inputContent').value.trim() || "";
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                ctx.drawImage(originalImage, 0, 0, targetWidth, targetHeight);
 
-            // 현재 입력한 값을 입력 기록 저장소에 저장하여 다음번에 기억하게 만듦
-            if(site !== "미지정") addNewHistory('site', site);
-            if(dong) addNewHistory('dong', dong);
-            if(ho) addNewHistory('ho', ho);
-            if(content) addNewHistory('content', content);
-            renderHistoryTags(); // 바뀐 기록 화면에 갱신
+                const site = document.getElementById('inputSite').value.trim() || "미지정";
+                const dong = document.getElementById('inputDong').value.trim() || "";
+                const ho = document.getElementById('inputHo').value.trim() || "";
+                const content = document.getElementById('inputContent').value.trim() || "";
 
-            // 워터마크 라인 구성
-            const textLines = [
-                `현장: ${site}`,
-                `위치: ${dong} ${ho}`.trim(),
-                `공종: ${content}`
-            ];
-
-            const baseSize = Math.max(canvas.width, canvas.height);
-            const fontSize = Math.floor(baseSize * 0.025); 
-            const padding = fontSize * 0.8;
-            const lineHeight = fontSize * 1.4;
-
-            ctx.font = `bold ${fontSize}px 'Malgun Gothic', Arial, sans-serif`;
-            
-            let maxTextWidth = 0;
-            textLines.forEach(line => {
-                const width = ctx.measureText(line).width;
-                if(width > maxTextWidth) maxTextWidth = width;
-            });
-
-            const boxWidth = maxTextWidth + (padding * 2);
-            const boxHeight = (lineHeight * textLines.length) + (padding * 1.5);
-            
-            const marginX = fontSize;
-            const marginY = fontSize;
-            const boxX = marginX;
-            const boxY = canvas.height - boxHeight - marginY;
-
-            // 검은 상자 그리기
-            ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; 
-            ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-
-            // 흰색 굵은 글씨 그리기 (OCR 최적화)
-            ctx.fillStyle = '#FFFFFF';
-            ctx.textBaseline = 'top';
-            
-            textLines.forEach((line, index) => {
-                const textX = boxX + padding;
-                const textY = boxY + padding + (index * lineHeight);
-ctx.fillText(line, textX, textY);});const preview = document.getElementById('preview');preview.src = canvas.toDataURL('image/jpeg', 0.9);preview.style.display = 'block';document.getElementById('resultCard').style.display = 'block';document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });}// 파일 저장 다운로드function downloadImage() {const canvas = document.getElementById('canvas');const site = document.getElementById('inputSite').value.trim() || "현장";const dong = document.getElementById('inputDong').value.trim() || "";const ho = document.getElementById('inputHo').value.trim() || "";const content = document.getElementById('inputContent').value.trim() || "";const filename = ${site}_${dong}_${ho}_${content}.replace(/\s+/g, '_') + '.jpg';const link = document.createElement('a');link.download = filename;link.href = canvas.toDataURL('image/jpeg', 0.9);link.click();}window.onload = initData;
+                if(site !== "미지정") addNewHistory('site', site);
+                if(dong) addNewHistory('dong', dong);
+                if(ho) addNewHistory('ho', ho);
+                if(content) addNewHistory('content', content);
+                renderHistoryTags();
+const textLines = [현장: ${site},위치: ${dong} ${ho}.trim(),공종: ${content}];const baseSize = Math.max(canvas.width, canvas.height);const fontSize = Math.floor(baseSize * 0.025);const padding = fontSize * 0.8;const lineHeight = fontSize * 1.4;ctx.font = bold ${fontSize}px 'Malgun Gothic', Arial, sans-serif;let maxTextWidth = 0;textLines.forEach(line => {const width = ctx.measureText(line).width;if(width > maxTextWidth) maxTextWidth = width;});const boxWidth = maxTextWidth + (padding * 2);const boxHeight = (lineHeight * textLines.length) + (padding * 1.5);const marginX = fontSize;const marginY = fontSize;const boxX = marginX;const boxY = canvas.height - boxHeight - marginY;ctx.fillStyle = 'rgba(0, 0, 0, 1.0)';ctx.fillRect(boxX, boxY, boxWidth, boxHeight);ctx.fillStyle = '#FFFFFF';ctx.textBaseline = 'top';textLines.forEach((line, index) => {const textX = boxX + padding;const textY = boxY + padding + (index * lineHeight);ctx.fillText(line, textX, textY);});logError("워터마크 그리기 완료. 미리보기 이미지 생성 중...");const preview = document.getElementById('preview');preview.src = canvas.toDataURL('image/jpeg', 0.85);preview.style.display = 'block';document.getElementById('resultCard').style.display = 'block';logError("성공! 화면 하단에 완성된 사진이 표시됩니다.");document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });} catch(e) {logError("합성 실패 원인: " + e.message);alert("오류가 발생했습니다. 아래 상태창을 확인해 주세요.");}}function downloadImage() {try {const canvas = document.getElementById('canvas');const site = document.getElementById('inputSite').value.trim() || "현장";const dong = document.getElementById('inputDong').value.trim() || "";const ho = document.getElementById('inputHo').value.trim() || "";const content = document.getElementById('inputContent').value.trim() || "";const filename = ${site}_${dong}_${ho}_${content}.replace(/\s+/g, '_') + '.jpg';const link = document.createElement('a');link.download = filename;link.href = canvas.toDataURL('image/jpeg', 0.85);link.click();logError("다운로드 명령 전송 완료");} catch(e) {logError("다운로드 에러: " + e.message);}}window.onload = initData;
