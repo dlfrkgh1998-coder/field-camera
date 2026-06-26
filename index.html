@@ -5,30 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>건설현장 워터마크 카메라</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', Arial, sans-serif; }
         body { background: #f0f2f5; padding: 15px; color: #333; }
         h3 { margin-bottom: 10px; color: #1a1a1a; }
         .card { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         label { display: block; margin-top: 10px; font-weight: bold; font-size: 14px; }
-        input[type="text"], input[type="file"] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; background-color: #fff; }
+        input[type="text"], input[type="file"] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; background-color: #fff; -webkit-appearance: none; }
         button { width: 100%; padding: 14px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; }
         .btn-blue { background: #007bff; color: white; }
         .btn-green { background: #28a745; color: white; }
         .btn-red { background: #dc3545; color: white; padding: 8px 12px; font-size: 13px; margin-top: 5px; width: auto; display: inline-block; }
-        #preview { max-width: 100%; border-radius: 6px; margin-top: 10px; display: none; }
+        #preview { max-width: 100%; border-radius: 6px; margin-top: 10px; display: none; height: auto; }
         .hint { font-size: 12px; color: #666; margin-top: 4px; display: block; }
-        .history-box { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
-        .history-tag { background: #e4e6eb; padding: 6px 10px; border-radius: 15px; font-size: 13px; cursor: pointer; color: #4b4f56; }
+        .history-box { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 25px; }
+        .history-tag { background: #e4e6eb; padding: 6px 10px; border-radius: 15px; font-size: 13px; cursor: pointer; color: #4b4f56; display: inline-block; }
         .header-area { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        #errorLog { color: red; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin-top: 10px; background: #fee; padding: 10px; border-radius: 6px; display: none; }
+        #errorLog { color: red; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin-top: 10px; background: #fee; padding: 10px; border-radius: 6px; display: block; }
     </style>
 </head>
 <body>
 
     <div id="mainPage">
         <div class="card">
-            <h3>1. 사진 불러오기</h3>
-            <input type="file" id="imageInput" accept="image/*" capture="camera" onchange="loadImage(event)">
+            <h3>1. 사진 선택 (촬영 또는 앨범)</h3>
+            <input type="file" id="imageInput" accept="image/*" onchange="loadImage(event)">
         </div>
 
         <div class="card">
@@ -38,24 +38,20 @@
             </div>
             
             <label>현장 이름</label>
-            <input type="text" id="inputSite" placeholder="예: 서울아파트 현장" list="siteList">
-            <datalist id="siteList"></datalist>
+            <input type="text" id="inputSite" placeholder="예: 서울아파트 현장">
             <span class="hint">자주 쓰는 항목:</span>
             <div class="history-box" id="historySite"></div>
 
             <label>동 입력</label>
-            <input type="text" id="inputDong" placeholder="예: 101동" list="dongList">
-            <datalist id="dongList"></datalist>
+            <input type="text" id="inputDong" placeholder="예: 101동">
             <div class="history-box" id="historyDong"></div>
 
             <label>호수 입력</label>
-            <input type="text" id="inputHo" placeholder="예: 502호" list="hoList">
-            <datalist id="hoList"></datalist>
+            <input type="text" id="inputHo" placeholder="예: 502호">
             <div class="history-box" id="historyHo"></div>
 
             <label>작업 내용 (공종)</label>
-            <input type="text" id="inputContent" placeholder="예: 방수공사" list="contentList">
-            <datalist id="contentList"></datalist>
+            <input type="text" id="inputContent" placeholder="예: 방수공사">
             <div class="history-box" id="historyContent"></div>
         </div>
 
@@ -63,31 +59,32 @@
 
         <div class="card" id="resultCard" style="display:none; margin-top:15px;">
             <h3>3. 완성된 사진 (미리보기)</h3>
-            <img id="preview">
+            <img id="preview" alt="완성 이미지">
             <button class="btn-green" onclick="downloadImage()">💾 갤러리에 저장</button>
         </div>
 
         <div class="card" id="errorCard" style="margin-top:15px;">
-            <h3>⚠️ 상태 체크 (반응 없을 때 확인)</h3>
-            <div id="errorLog">에러 없음</div>
+            <h3>📋 시스템 상태 확인창</h3>
+            <div id="errorLog">앱 준비 완료. 사진을 올리고 합성을 눌러보세요.</div>
         </div>
     </div>
 
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        let originalImage = null;
-        let historyData = { site: [], dong: [], ho: [], content: [] };
+        var originalImage = null;
+        var historyData = { site: [], dong: [], ho: [], content: [] };
 
         function logError(msg) {
-            const logBox = document.getElementById('errorLog');
-            logBox.style.display = 'block';
-            logBox.innerText += "\n" + msg;
+            var logBox = document.getElementById('errorLog');
+            if(logBox) {
+                logBox.innerText = msg;
+            }
         }
 
-        function initData() {
+        window.onload = function() {
             try {
-                const savedHistory = localStorage.getItem('constructionInputHistory');
+                var savedHistory = localStorage.getItem('constructionInputHistory');
                 if (savedHistory) {
                     historyData = JSON.parse(savedHistory);
                 } else {
@@ -100,11 +97,11 @@
                     localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
                 }
                 renderHistoryTags();
-                logError("앱 초기화 완료. 사진을 올린 후 합성을 눌러보세요.");
+                logError("앱이 정상 작동 중입니다. 사진을 선택해 주세요.");
             } catch(e) {
-                logError("초기화 에러: " + e.message);
+                logError("초기화 예외 발생: " + e.message);
             }
-        }
+        };
 
         function renderHistoryTags() {
             setupSection('Site', historyData.site);
@@ -114,89 +111,90 @@
         }
 
         function setupSection(type, list) {
-            const datalist = document.getElementById(type.toLowerCase() + 'List');
-            if(datalist) {
-                datalist.innerHTML = '';
-                list.forEach(item => {
-                    const option = document.createElement('option');
-                    option.value = item;
-                    datalist.appendChild(option);
-                });
-            }
-
-            const box = document.getElementById('history' + type);
+            var box = document.getElementById('history' + type);
             if(box) {
                 box.innerHTML = '';
-                list.forEach(item => {
-                    const tag = document.createElement('span');
-                    tag.className = 'history-tag';
-                    tag.innerText = item;
-                    tag.onclick = function() {
-                        document.getElementById('input' + type).value = item;
-                    };
-                    box.appendChild(tag);
-                });
+                for(var i = 0; i < list.length; i++) {
+                    (function(item) {
+                        var tag = document.createElement('span');
+                        tag.className = 'history-tag';
+                        tag.innerText = item;
+                        tag.onclick = function() {
+                            document.getElementById('input' + type).value = item;
+                        };
+                        box.appendChild(tag);
+                    })(list[i]);
+                }
             }
         }
 
         function addNewHistory(type, value) {
             if (!value) return;
-            let list = historyData[type];
-            const index = list.indexOf(value);
-            if (index > -1) list.splice(index, 1);
+            var list = historyData[type];
+            var index = list.indexOf(value);
+            if (index > -1) {
+                list.splice(index, 1);
+            }
             list.unshift(value);
-            if (list.length > 8) list.pop();
-            localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
+            if (list.length > 6) {
+                list.pop();
+            }
+            try {
+                localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
+            } catch(e) {}
         }
 
         function clearHistory() {
             if (confirm("자주 쓰는 항목 기록을 모두 지우시겠습니까?")) {
                 historyData = { site: [], dong: [], ho: [], content: [] };
-                localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
+                try {
+                    localStorage.setItem('constructionInputHistory', JSON.stringify(historyData));
+                } catch(e) {}
                 renderHistoryTags();
+                logError("입력 기록이 성공적으로 삭제되었습니다.");
             }
         }
 
         function loadImage(event) {
             try {
-                const file = event.target.files;
+                var file = event.target.files[0];
                 if (!file) return;
                 
-                logError("사진 로딩 시작: " + file.name + " (" + Math.round(file.size/1024/1024) + "MB)");
+                logError("사진 읽는 중: " + file.name);
                 
-                const reader = new FileReader();
+                var reader = new FileReader();
                 reader.onload = function(e) {
                     originalImage = new Image();
                     originalImage.onload = function() {
-                        logError("사진 로딩 완료! 원본 크기: " + originalImage.width + "x" + originalImage.height);
+                        logError("사진 등록 성공! [워터마크 합성하기]를 누르세요.");
                         document.getElementById('resultCard').style.display = 'none';
                     };
                     originalImage.onerror = function() {
-                        logError("이미지 해석 에러");
+                        logError("이미지 파일 해석 실패");
                     };
                     originalImage.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             } catch(e) {
-                logError("사진 로드 실패: " + e.message);
+                logError("사진 불러오기 오류: " + e.message);
             }
         }
 
         function processImage() {
             try {
                 if (!originalImage) { 
-                    alert('먼저 사진을 촬영하거나 불러와주세요!'); 
-                    logError("경고: 사진이 선택되지 않았습니다.");
+                    alert('먼저 사진을 선택해 주세요!'); 
+                    logError("오류: 선택된 사진이 없습니다.");
                     return; 
                 }
 
-                logError("합성 시작...");
-                const canvas = document.getElementById('canvas');
-                const ctx = canvas.getContext('2d');
+                logError("워터마크 글씨 입히는 중...");
+                var canvas = document.getElementById('canvas');
+                var ctx = canvas.getContext('2d');
 
-                let targetWidth = originalImage.width;
-                let targetHeight = originalImage.height;
-                const MAX_SIZE = 2000;
+                var targetWidth = originalImage.width;
+                var targetHeight = originalImage.height;
+                var MAX_SIZE = 1600;
                 
                 if (targetWidth > MAX_SIZE || targetHeight > MAX_SIZE) {
                     if (targetWidth > targetHeight) {
@@ -206,21 +204,30 @@
                         targetWidth = Math.round((targetWidth * MAX_SIZE) / targetHeight);
                         targetHeight = MAX_SIZE;
                     }
-                    logError(`사진 해상도 최적화 적용: ${targetWidth}x${targetHeight}`);
                 }
 
                 canvas.width = targetWidth;
                 canvas.height = targetHeight;
                 ctx.drawImage(originalImage, 0, 0, targetWidth, targetHeight);
 
-                const site = document.getElementById('inputSite').value.trim() || "미지정";
-                const dong = document.getElementById('inputDong').value.trim() || "";
-                const ho = document.getElementById('inputHo').value.trim() || "";
-                const content = document.getElementById('inputContent').value.trim() || "";
+                var site = document.getElementById('inputSite').value.trim() || "미지정";
+                var dong = document.getElementById('inputDong').value.trim() || "";
+                var ho = document.getElementById('inputHo').value.trim() || "";
+                var content = document.getElementById('inputContent').value.trim() || "";
 
                 if(site !== "미지정") addNewHistory('site', site);
                 if(dong) addNewHistory('dong', dong);
                 if(ho) addNewHistory('ho', ho);
                 if(content) addNewHistory('content', content);
                 renderHistoryTags();
-const textLines = [현장: ${site},위치: ${dong} ${ho}.trim(),공종: ${content}];const baseSize = Math.max(canvas.width, canvas.height);const fontSize = Math.floor(baseSize * 0.025);const padding = fontSize * 0.8;const lineHeight = fontSize * 1.4;ctx.font = bold ${fontSize}px 'Malgun Gothic', Arial, sans-serif;let maxTextWidth = 0;textLines.forEach(line => {const width = ctx.measureText(line).width;if(width > maxTextWidth) maxTextWidth = width;});const boxWidth = maxTextWidth + (padding * 2);const boxHeight = (lineHeight * textLines.length) + (padding * 1.5);const marginX = fontSize;const marginY = fontSize;const boxX = marginX;const boxY = canvas.height - boxHeight - marginY;ctx.fillStyle = 'rgba(0, 0, 0, 1.0)';ctx.fillRect(boxX, boxY, boxWidth, boxHeight);ctx.fillStyle = '#FFFFFF';ctx.textBaseline = 'top';textLines.forEach((line, index) => {const textX = boxX + padding;const textY = boxY + padding + (index * lineHeight);ctx.fillText(line, textX, textY);});logError("워터마크 그리기 완료. 미리보기 이미지 생성 중...");const preview = document.getElementById('preview');preview.src = canvas.toDataURL('image/jpeg', 0.85);preview.style.display = 'block';document.getElementById('resultCard').style.display = 'block';logError("성공! 화면 하단에 완성된 사진이 표시됩니다.");document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });} catch(e) {logError("합성 실패 원인: " + e.message);alert("오류가 발생했습니다. 아래 상태창을 확인해 주세요.");}}function downloadImage() {try {const canvas = document.getElementById('canvas');const site = document.getElementById('inputSite').value.trim() || "현장";const dong = document.getElementById('inputDong').value.trim() || "";const ho = document.getElementById('inputHo').value.trim() || "";const content = document.getElementById('inputContent').value.trim() || "";const filename = ${site}_${dong}_${ho}_${content}.replace(/\s+/g, '_') + '.jpg';const link = document.createElement('a');link.download = filename;link.href = canvas.toDataURL('image/jpeg', 0.85);link.click();logError("다운로드 명령 전송 완료");} catch(e) {logError("다운로드 에러: " + e.message);}}window.onload = initData;
+
+                var textLines = [
+                    "현장: " + site,
+                    "위치: " + (dong + " " + ho).trim(),
+                    "공종: " + content
+                ];
+
+                var baseSize = Math.max(canvas.width, canvas.height);
+                var fontSize = Math.floor(baseSize * 0.028); 
+                var padding = fontSize * 0.8;
+var lineHeight = fontSize * 1.4;ctx.font = "bold " + fontSize + "px 'Malgun Gothic', Arial, sans-serif";var maxTextWidth = 0;for(var j = 0; j < textLines.length; j++) {var width = ctx.measureText(textLines[j]).width;if(width > maxTextWidth) maxTextWidth = width;}var boxWidth = maxTextWidth + (padding * 2);var boxHeight = (lineHeight * textLines.length) + (padding * 1.5);var marginX = fontSize;var marginY = fontSize;var boxX = marginX;var boxY = canvas.height - boxHeight - marginY;ctx.fillStyle = '#000000';ctx.fillRect(boxX, boxY, boxWidth, boxHeight);ctx.fillStyle = '#FFFFFF';ctx.textBaseline = 'top';for(var k = 0; k < textLines.length; k++) {var textX = boxX + padding;var textY = boxY + padding + (k * lineHeight);ctx.fillText(textLines[k], textX, textY);}var preview = document.getElementById('preview');preview.src = canvas.toDataURL('image/jpeg', 0.85);preview.style.display = 'block';document.getElementById('resultCard').style.display = 'block';logError("성공! 화면 아래에 합성 완료 사진이 나타났습니다.");window.scrollTo({top: document.getElementById('resultCard').offsetTop,behavior: 'smooth'});} catch(e) {logError("합성 오류 발생: " + e.message);alert("처리 중 에러가 발생했습니다. 아래 확인창을 봐주세요.");}}function downloadImage() {try {var canvas = document.getElementById('canvas');var site = document.getElementById('inputSite').value.trim() || "현장";var dong = document.getElementById('inputDong').value.trim() || "";var ho = document.getElementById('inputHo').value.trim() || "";var content = document.getElementById('inputContent').value.trim() || "";var filename = (site + "" + dong + "" + ho + "" + content).replace(/\s+/g, '') + '.jpg';var link = document.createElement('a');link.download = filename;link.href = canvas.toDataURL('image/jpeg', 0.85);link.click();logError("갤러리 저장(다운로드) 신호를 보냈습니다.");} catch(e) {logError("다운로드 기능 실패: " + e.message);}}
