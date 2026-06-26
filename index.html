@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>건설현장 워터마크 카메라</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
+        body { background: #f0f2f5; padding: 15px; color: #333; }
+        h2, h3 { margin-bottom: 10px; color: #1a1a1a; }
+        .card { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 14px; }
+        select, input, textarea { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; background-color: #fff; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
+        .btn-gray { background: #6c757d; color: white; }
+        .btn-red { background: #dc3545; color: white; padding: 8px; font-size: 14px; margin-top: 5px; width: auto; float: right; }
+        .nav-tabs { display: flex; margin-bottom: 15px; gap: 10px; }
+        .nav-tabs button { flex: 1; margin: 0; background: #e0e0e0; color: #333; }
+        .nav-tabs button.active { background: #333; color: white; }
+        #preview { max-width: 100%; border-radius: 6px; margin-top: 10px; display: none; }
+        .hint { font-size: 12px; color: #666; margin-top: 2px; }
+        .clearfix::after { content: ""; clear: both; display: table; }
+    </style>
+</head>
+<body>
+
+    <!-- 탭 메뉴 -->
+    <div class="nav-tabs">
+        <button id="tabMainBtn" class="active" onclick="switchTab('main')">📸 사진 촬영</button>
+        <button id="tabSettingBtn" onclick="switchTab('setting')">⚙️ 현장 설정</button>
+    </div>
+
+    <!-- 1. 메인 작업 화면 -->
+    <div id="mainPage">
+        <div class="card">
+            <h3>1. 사진 불러오기</h3>
+            <input type="file" id="imageInput" accept="image/*" capture="camera" onchange="loadImage(event)">
+        </div>
+
+        <div class="card">
+            <h3>2. 현장 정보 선택</h3>
+            
+            <label>현장 선택</label>
+            <select id="selSite" onchange="onMainSiteChange()"></select>
+
+            <label>동 선택</label>
+            <select id="selDong"></select>
+
+            <label>호수 선택</label>
+            <select id="selHo"></select>
+
+            <label>작업 내용</label>
+            <select id="selContent"></select>
+        </div>
+
+        <button class="btn-blue" onclick="processImage()">✨ 워터마크 합성하기</button>
+
+        <div class="card" id="resultCard" style="display:none; margin-top:15px;">
+            <h3>3. 완성된 사진 (미리보기)</h3>
+            <img id="preview">
+            <button class="btn-green" onclick="downloadImage()">💾 갤러리에 저장</button>
+        </div>
+    </div>
+
+    <!-- 2. 데이터 설정 화면 -->
+    <div id="settingPage" style="display:none;">
+        <div class="card clearfix">
+            <h3>⚙️ 현장별 데이터 관리</h3>
+            
+            <label>관리할 현장 선택</label>
+            <select id="setSiteSelect" onchange="onSettingSiteChange()"></select>
+            <button class="btn-red" onclick="deleteCurrentSite()">선택된 현장 삭제</button>
+        </div>
+
+        <div class="card">
+            <h3>➕ 새 현장 추가하기</h3>
+            <input type="text" id="newSiteName" placeholder="예: 서울아파트 현장 (입력 후 추가 클릭)">
+            <button class="btn-blue" style="padding: 10px; font-size:14px;" onclick="addNewSite()">새 현장 추가</button>
+        </div>
+
+        <div class="card">
+            <h3>📋 선택된 현장의 데이터 수정</h3>
+            <p class="hint">각 항목은 줄바꿈(엔터)으로 구분해서 입력하세요.</p>
+
+            <label>동 목록</label>
+            <textarea id="setDongList" rows="4" placeholder="101동&#10;102동"></textarea>
+
+            <label>호수 목록</label>
+            <textarea id="setHoList" rows="4" placeholder="101호&#10;102호"></textarea>
+
+            <label>작업 내용 목록</label>
+            <textarea id="setContentList" rows="4" placeholder="방수공사&#10;타일시공"></textarea>
+
+            <button class="btn-gray" onclick="saveSettings()">💾 현재 현장 데이터 저장</button>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        let originalImage = null;
+        let siteData = {}; 
+        let currentMainSite = "";
+        let currentSettingSite = "";
+
+        function switchTab(tab) {
+            if(tab === 'main') {
+                document.getElementById('mainPage').style.display = 'block';
+                document.getElementById('settingPage').style.display = 'none';
+                document.getElementById('tabMainBtn').classList.add('active');
+                document.getElementById('tabSettingBtn').classList.remove('active');
+                refreshMainOptions();
+            } else {
+                document.getElementById('mainPage').style.display = 'none';
+                document.getElementById('settingPage').style.display = 'block';
+                document.getElementById('tabMainBtn').classList.remove('active');
+                document.getElementById('tabSettingBtn').classList.add('active');
+                refreshSettingOptions();
+            }
+        }
+
+        function initData() {
+            const saved = localStorage.getItem('constructionSiteData');
+            if (saved) {
+                siteData = JSON.parse(saved);
+            } else {
+                // 초기 기본 샘플 데이터
+                siteData = {
+                    "서울 신축 현장": {
+                        dong: "101동\n102동\n103동",
+                        ho: "101호\n102호\n201호\n202호",
+                        content: "방수공사\n타일시공\n벽지마감"
+                    },
+                    "부산 가공 현장": {
+                        dong: "A동\nB동",
+                        ho: "기초\n지상층",
+                        content: "철근배근\n콘크리트타설"
+                    }
+                };
+                saveToStorage();
+            }
+            
+            const sites = Object.keys(siteData);
+            if(sites.length > 0) {
+                currentMainSite = sites[0];
+                currentSettingSite = sites[0];
+            }
+            refreshMainOptions();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('constructionSiteData', JSON.stringify(siteData));
+        }
+
+        // 메인 화면 선택지 새로고침
+        function refreshMainOptions() {
+            const sites = Object.keys(siteData);
+            fillSelect('selSite', sites, currentMainSite);
+            
+            if (currentMainSite && siteData[currentMainSite]) {
+                fillSelect('selDong', siteData[currentMainSite].dong.split('\n'));
+                fillSelect('selHo', siteData[currentMainSite].ho.split('\n'));
+                fillSelect('selContent', siteData[currentMainSite].content.split('\n'));
+            } else {
+                fillSelect('selDong', []);
+                fillSelect('selHo', []);
+                fillSelect('selContent', []);
+            }
+        }
+
+        function onMainSiteChange() {
+            currentMainSite = document.getElementById('selSite').value;
+            refreshMainOptions();
+        }
+
+        // 설정 화면 선택지 새로고침
+        function refreshSettingOptions() {
+            const sites = Object.keys(siteData);
+            fillSelect('setSiteSelect', sites, currentSettingSite);
+            
+            if (currentSettingSite && siteData[currentSettingSite]) {
+                document.getElementById('setDongList').value = siteData[currentSettingSite].dong;
+                document.getElementById('setHoList').value = siteData[currentSettingSite].ho;
+                document.getElementById('setContentList').value = siteData[currentSettingSite].content;
+            } else {
+                document.getElementById('setDongList').value = "";
+                document.getElementById('setHoList').value = "";
+                document.getElementById('setContentList').value = "";
+            }
+        }
+
+        function onSettingSiteChange() {
+            currentSettingSite = document.getElementById('setSiteSelect').value;
+            refreshSettingOptions();
+        }
+
+        // 새 현장 추가
+        function addNewSite() {
+            const nameInput = document.getElementById('newSiteName');
+            const name = nameInput.value.trim();
+            if(!name) { alert('현장 이름을 입력하세요!'); return; }
+            if(siteData[name]) { alert('이미 존재하는 현장 이름입니다.'); return; }
+
+            siteData[name] = { dong: "", ho: "", content: "" };
+            saveToStorage();
+            currentSettingSite = name;
+            nameInput.value = "";
+            refreshSettingOptions();
+            alert('▶ 새 현장이 추가되었습니다. 아래에서 동/호수 데이터를 입력 후 저장하세요!');
+        }
+
+        // 현장 삭제
+        function deleteCurrentSite() {
+            if(!currentSettingSite) return;
+            if(!confirm(`[${currentSettingSite}] 현장 데이터를 정말 삭제하시겠습니까?`)) return;
+
+            delete siteData[currentSettingSite];
+            saveToStorage();
+            
+            const sites = Object.keys(siteData);
+            currentSettingSite = sites.length > 0 ? sites[0] : "";
+            currentMainSite = sites.length > 0 ? sites[0] : "";
+            refreshSettingOptions();
+            alert('삭제되었습니다.');
+        }
+
+        // 현장 데이터 저장
+        function saveSettings() {
+            if(!currentSettingSite) { alert('관리할 현장을 먼저 선택하거나 추가하세요!'); return; }
+
+            siteData[currentSettingSite].dong = document.getElementById('setDongList').value.trim();
+            siteData[currentSettingSite].ho = document.getElementById('setHoList').value.trim();
+            siteData[currentSettingSite].content = document.getElementById('setContentList').value.trim();
+            
+            saveToStorage();
+            alert(`⚙️ [${currentSettingSite}] 데이터가 안전하게 저장되었습니다!`);
+            switchTab('main');
+        }
+
+        function fillSelect(elementId, array, selectedValue) {
+const select = document.getElementById(elementId);select.innerHTML = '';array.forEach(item => {if(item.trim() !== '') {const opt = document.createElement('option');opt.value = item.trim();opt.innerText = item.trim();if(item.trim() === selectedValue) opt.selected = true;select.appendChild(opt);}});}function loadImage(event) {const file = event.target.files[0];if (!file) return;const reader = new FileReader();reader.onload = function(e) {originalImage = new Image();originalImage.onload = function() {document.getElementById('resultCard').style.display = 'none';};originalImage.src = e.target.result;};reader.readAsDataURL(file);}// 워터마크 합성 (OCR 타겟)function processImage() {if (!originalImage) { alert('먼저 사진을 촬영하거나 불러와주세요!'); return; }const canvas = document.getElementById('canvas');const ctx = canvas.getContext('2d');canvas.width = originalImage.width;canvas.height = originalImage.height;ctx.drawImage(originalImage, 0, 0);const site = document.getElementById('selSite').value || "미지정";const dong = document.getElementById('selDong').value || "";const ho = document.getElementById('selHo').value || "";const content = document.getElementById('selContent').value || "";const textLines = [현장: ${site},위치: ${dong} ${ho}.trim(),공종: ${content}];const baseSize = Math.max(canvas.width, canvas.height);const fontSize = Math.floor(baseSize * 0.025);const padding = fontSize * 0.8;const lineHeight = fontSize * 1.4;ctx.font = bold ${fontSize}px 'Malgun Gothic', Arial, sans-serif;let maxTextWidth = 0;textLines.forEach(line => {const width = ctx.measureText(line).width;if(width > maxTextWidth) maxTextWidth = width;});const boxWidth = maxTextWidth + (padding * 2);const boxHeight = (lineHeight * textLines.length) + (padding * 1.5);const marginX = fontSize;const marginY = fontSize;const boxX = marginX;const boxY = canvas.height - boxHeight - marginY;// 불투명 검은 사각형 박스 배경ctx.fillStyle = 'rgba(0, 0, 0, 1.0)';ctx.fillRect(boxX, boxY, boxWidth, boxHeight);// 흰색 굵은 글씨 (OCR 인식 최적화 대비값)ctx.fillStyle = '#FFFFFF';ctx.textBaseline = 'top';textLines.forEach((line, index) => {const textX = boxX + padding;const textY = boxY + padding + (index * lineHeight);ctx.fillText(line, textX, textY);});const preview = document.getElementById('preview');preview.src = canvas.toDataURL('image/jpeg', 0.9);preview.style.display = 'block';document.getElementById('resultCard').style.display = 'block';document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });}function downloadImage() {const canvas = document.getElementById('canvas');const site = document.getElementById('selSite').value || "현장";const dong = document.getElementById('selDong').value || "";const ho = document.getElementById('selHo').value || "";const content = document.getElementById('selContent').value || "";// 공백 및 특수문자 정돈하여 파일명 세팅const filename = ${site}_${dong}_${ho}_${content}.replace(/\s+/g, '_') + '.jpg';const link = document.createElement('a');link.download = filename;link.href = canvas.toDataURL('image/jpeg', 0.9);link.click();}window.onload = initData;
